@@ -674,4 +674,4 @@ The API implements rate limiting on all endpoints to prevent abuse. Check respon
 http://localhost:8080
 ```
 
-Change the host and port based on your deployment configuration.
+
