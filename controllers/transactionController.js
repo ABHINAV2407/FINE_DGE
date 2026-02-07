@@ -1,50 +1,45 @@
-const TransactionModel = require("../models/transaction.model");
+const TransactionModel = require("../models/transactionModel");
+const ApiError = require("../util/apiError");
+const ValidationError = require("../util/validationError");
+const cacheService = require("../services/cacheService");
 
 const createTransactionHandler = async (req, res) => {
 
   const { type, category, amount, } = req.body;
   const userId = req.user.userId;
 
-  //validation
-  if (!type || !category || !amount) {
-    return res.status(500).send({
-      success: false,
-      messgae: 'please provide required fields',
-    })
-  }
-  const transaction = await TransactionModel.create({userId,type,category,amount});
+  const transaction = await TransactionModel.create({ userId, type, category, amount });
+  cacheService.delete(`summary:${userId}`);
   res.status(200).json(transaction);
 };
 
-const getAllTransactionHandler = async (req,res) => {
-   const transactions = await TransactionModel.find({userId: (req.user.userId)});
-   res.status(200).json({
-    success:true,
-    message:'Transactions fetched Successfully',
+const getAllTransactionHandler = async (req, res) => {
+  const transactions = await TransactionModel.find({ userId: (req.user.userId) });
+  res.status(200).json({
+    success: true,
+    message: 'Transactions fetched Successfully',
     transactions
-});
+  });
 }
 
-const getTransactionHandler = async (req,res) => {
-  try{
-      const transaction = await TransactionModel.findById(req.params.id);
-      if (!transaction) return res.status(404).json({ error: "Transaction not found" });
-       res.status(200).json({
-            success:true,
-            message:'Transaction fetched Successfully',
-            transaction
-        });
-  }catch(error){
-    res.status(404).json({
-      success:false,
-      message:'Transaction not found',
-      error 
-    })
+const getTransactionHandler = async (req, res, next) => {
+  try {
+    const transaction = await TransactionModel.findById(req.params.id);
+    if (!transaction) return next(new ApiError(404, 'Transaction not found'));
+    res.status(200).json({
+      success: true,
+      message: 'Transaction fetched Successfully',
+      transaction
+    });
+  } catch (error) {
+    error.statusCode = 404;
+    error.message = 'Transaction not found';
+    return next(error);
   }
-  
+
 }
 
-const updateTransactionHandler = async (req, res) => {
+const updateTransactionHandler = async (req, res, next) => {
   try {
     const updateData = {};
 
@@ -61,10 +56,7 @@ const updateTransactionHandler = async (req, res) => {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields provided for update"
-      });
+      return next(new ApiError(400, 'No valid fields provided for update'));
     }
 
     const transaction = await TransactionModel.findOneAndUpdate(
@@ -80,12 +72,9 @@ const updateTransactionHandler = async (req, res) => {
     );
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found"
-      });
+      return next(new ApiError(400, 'Transaction not found'));
     }
-
+    cacheService.delete(`summary:${req.user.userId}`);
     res.status(200).json({
       success: true,
       message: "Transaction updated successfully",
@@ -93,27 +82,62 @@ const updateTransactionHandler = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update transaction",
-      error: error.message
-    });
+    error.statusCode = 500;
+    error.message = 'Failed to update transaction';
+    return next(error);
+
   }
 };
 
-const deleteTransactionHandler = async (req, res) => {
+const deleteTransactionHandler = async (req, res, next) => {
   const transaction = await TransactionModel.findOneAndDelete({
-  _id: req.params.id,
-  userId: req.user.userId
+    _id: req.params.id,
+    userId: req.user.userId
   });
-  if (!transaction) return res.status(404).json({success: false, message: "Transaction not found" });
-  console.log('i am here')
-   res.status(200).send({
-    success : true,
+  if (!transaction) return next(new ApiError(400, 'Transaction not found'));
+  cacheService.delete(`summary:${req.user.userId}`);
+  res.status(200).send({
+    success: true,
     message: 'transaction deleted Successfully'
   });
 };
+
+const getFilteredTransactionsHandler = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { category, startDate, endDate } = req.query;
+
+    const query = { userId };
+
+    if (category) {
+      query.category = category;
+    }
+
+    if (startDate || endDate) {
+      query.date = {};
+
+      if (startDate) {
+        query.date.$gte = new Date(startDate);
+      }
+
+      if (endDate) {
+        query.date.$lte = new Date(endDate);
+      }
+    }
+
+    const data = await TransactionModel.find(query).sort({ date: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      data,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 module.exports = {
@@ -121,5 +145,6 @@ module.exports = {
   getAllTransactionHandler,
   getTransactionHandler,
   updateTransactionHandler,
-  deleteTransactionHandler
+  deleteTransactionHandler,
+  getFilteredTransactionsHandler
 }

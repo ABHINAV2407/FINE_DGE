@@ -1,23 +1,26 @@
 const jwt = require('jsonwebtoken');
 
-function generateToken(payload){
-    const token =  jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN
-    });
+function generateToken(payload) {
+  const token = jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN
+  });
 
-    return token;
+  return token;
 }
 
-function verifyToken(token) {
+function verifyToken(token,next) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     return decoded;
   } catch (error) {
-    throw new Error("Invalid or expired token");
+    console.log(error);
+    error.statusCode = 401;
+    error.message = "Invalid or expired token"
+    return next(error);
   }
 }
 
-module.exports={
+module.exports = {
   generateToken,
   verifyToken
 }

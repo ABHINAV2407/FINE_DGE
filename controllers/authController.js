@@ -1,33 +1,23 @@
 const userModel = require('../models/userModel');
 const bcrypt = require('bcryptjs');
 const jwt = require("../config/jwtConfig");
+const ApiError = require('../util/apiError');
 
-const registrationHandler = async (req, res) => {
+const registrationHandler = async (req, res, next) => {
   try {
     const { name, email, password, preferences } = req.body;
-
-    //validation
-    if (!name || !email || !password) {
-      res.status(500).send({
-        success: false,
-        messgae: 'please provide required fields',
-      })
-    }
 
     // check user
     const existingUser = await userModel.findOne({ email });
     if (existingUser) {
-      res.status(500).send({
-        success: false,
-        messgae: `user already register with email : ${email}`,
-      })
+      return next(new ApiError(400, `user already register with email : ${email}`));
     }
 
     // hashing password 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // create new user
-    const user = await userModel.create({ name, email, password : hashedPassword, preferences });
+    const user = await userModel.create({ name, email, password: hashedPassword, preferences });
     res.status(201).send({
       success: true,
       messgae: 'user registered successfully'
@@ -35,59 +25,42 @@ const registrationHandler = async (req, res) => {
 
   } catch (error) {
     console.log(error);
-    res.status(500).send({
-      success: false,
-      messgae: 'user registration failed',
-      error: error
-    })
+    error.statusCode = 500;
+    error.message = 'user registration failed';
+    return next(error);
   }
 }
 
 
-const loginHandler = async (req,res)=> {
-    try{
-        const {email,password} = req.body;
+const loginHandler = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
 
-        if (!email || !password) {
-        res.status(500).send({
-          success: false,
-          messgae: 'please provide email or password',
-        })
-      }
-
-      const user = await userModel.findOne({email});
-      if(!user){
-          res.status(500).send({
-          success: false,
-          messgae: `please provide correct credentials`,
-        })
-      }
-
-      const isMatch = await bcrypt.compare(password, user.password);
-      if(!isMatch){
-        res.status(500).send({
-          success: false,
-          messgae: `please provide correct credentials`,
-        })
-      }
- 
-      const token = jwt.generateToken({userId: user._id, email: user.email});
-      user.password = undefined
-      res.status(200).send({
-          success: true,
-          messgae: 'user login successfully',
-          user,
-          token
-      })
-
-    }catch(error){
-      console.log(error);
-      res.status(500).send({
-        success: false,
-        messgae: 'user login failed',
-        error: error
-      })
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return next(new ApiError(400, `please provide correct credentials`));
     }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return next(new ApiError(400, `please provide correct credentials`));
+    }
+
+    const token = jwt.generateToken({ userId: user._id, email: user.email });
+    user.password = undefined
+    res.status(200).send({
+      success: true,
+      messgae: 'user login successfully',
+      user,
+      token
+    })
+
+  } catch (error) {
+    console.log(error);
+    error.statusCode = 500;
+    error.message = 'user login failed';
+    return next(error);
+  }
 }
 
 module.exports = {
